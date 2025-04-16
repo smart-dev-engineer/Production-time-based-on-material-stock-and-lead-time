@@ -1,5 +1,5 @@
 from ortools.linear_solver import pywraplp
-
+import matplotlib.pyplot as plt
 # 1. OR-Tools solver 생성
 solver = pywraplp.Solver.CreateSolver('SCIP')
 
@@ -111,3 +111,53 @@ if status == pywraplp.Solver.OPTIMAL:
         
 else:
     print("최적해를 찾지 못했습니다.")
+
+
+
+import plotly.graph_objects as go
+import plotly.express as px
+
+# Gantt 스타일: 생산 시작 시간
+fig1 = go.Figure()
+fig1.add_trace(go.Bar(
+    y=products,
+    x=[st[p].solution_value() for p in products],
+    orientation='h',
+    marker=dict(color='skyblue'),
+    name="생산 시작 시간"
+))
+
+fig1.update_layout(
+    title="제품별 생산 시작 시간",
+    xaxis_title="시간",
+    yaxis_title="제품",
+    template="plotly_white"
+)
+fig1.write_html("생산_시작시간.html")
+
+
+# 납기 지연 시간
+fig2 = px.bar(
+    x=products,
+    y=[Tardiness[p].solution_value() for p in products],
+    labels={'x': '제품', 'y': '납기 지연 시간'},
+    title="제품별 납기 지연 시간",
+    color_discrete_sequence=['salmon']
+)
+fig2.write_html("납기_지연시간.html")
+
+
+# 원자재 사용량
+material_usage = []
+for m in materials:
+    used_amount = sum(PrePro[p][m].solution_value() * requirements[p].get(m, 0) for p in products)
+    material_usage.append(used_amount)
+
+fig3 = px.bar(
+    x=materials,
+    y=material_usage,
+    labels={'x': '원자재', 'y': '사용량'},
+    title="원자재별 사용량",
+    color_discrete_sequence=['mediumseagreen']
+)
+fig3.write_html("원자재_사용량.html")
