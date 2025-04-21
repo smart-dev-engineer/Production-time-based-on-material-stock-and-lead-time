@@ -24,10 +24,25 @@ materials = ['R1', 'R2', 'R3']
 
 # 원자재 조달기간
 lt = {
-    'R1': 2,
-    'R2': 4,
+    'R1': 5,
+    'R2': 10,
     'R3': 1
 }
+
+# 빠른 조달 리드타임 및 조달 가능량 정의
+transit = {
+    'R1': {'lt': 2, 'qty': 30},
+    'R2': {'lt': 3, 'qty': 30},
+    'R3': {'lt': 0, 'qty': 30},
+}
+
+# 각 제품별 원자재 리스트에 없는 원자재는 0으로 설정
+for material in materials:
+    if material not in transit:
+        transit[material]['lt'] = 0
+        transit[material]['qty'] = 0
+
+
 
 # 원자재 재고
 inventory = {
@@ -60,6 +75,9 @@ st = {i: solver.IntVar(0, solver.infinity(), f'st_{i}') for i in products}
 #제품별 납기지연시간
 Tardiness = {i: solver.IntVar(0, solver.infinity(), f'Tardiness_{i}') for i in products}
 
+#배송후 제품생산가능
+Pro = {i:{j: solver.IntVar(0, 1, f'PrePro_{i}_{j}') for j in materials} for i in products}
+
 #납기지연시간 제약
 for i in products:
     solver.Add(Tardiness[i] >= st[i] - due[i])
@@ -67,6 +85,16 @@ for i in products:
 #원자재 재고 제약
 for j in materials:
     solver.Add(sum(PrePro[i][j]*requirements[i][j] for i in products) <= inventory[j])
+
+#배송시시 제약
+for j in materials:
+    solver.Add(sum(Pro[i][j]*requirements[i][j] for i in products) <= inventory[j] + transit[j]['qty'])
+
+#배송 후 생산가능 제약
+for i in products:
+    for j in materials:
+        solver.Add(Pro[i][j]*M >= transit[j]['lt']-st[i])
+
 
 #원자재 조달기간 전 생산가능 제약
 for i in products:
