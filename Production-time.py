@@ -23,14 +23,14 @@ due = {
 materials = ['R1', 'R2', 'R3']
 
 # 원자재 조달기간
-lt = {
+lt2= {
     'R1': 5,
     'R2': 10,
     'R3': 1
 }
 
 # 빠른 조달 리드타임 및 조달 가능량 정의
-transit = {
+lt1 = {
     'R1': {'lt': 2, 'qty': 30},
     'R2': {'lt': 3, 'qty': 30},
     'R3': {'lt': 0, 'qty': 30},
@@ -38,9 +38,9 @@ transit = {
 
 # 각 제품별 원자재 리스트에 없는 원자재는 0으로 설정
 for material in materials:
-    if material not in transit:
-        transit[material]['lt'] = 0
-        transit[material]['qty'] = 0
+    if material not in lt1:
+        lt1[material]['lt'] = 0
+        lt1[material]['qty'] = 0
 
 
 
@@ -67,7 +67,7 @@ for product in requirements:
             requirements[product][material] = 0
 
 #각 제품별 원자재 조달 전 생산 가능여부
-PrePro = {i:{j: solver.IntVar(0, 1, f'PrePro_{i}_{j}') for j in materials} for i in products}
+PrePro2 = {i:{j: solver.IntVar(0, 1, f'PrePro_{i}_{j}') for j in materials} for i in products}
 
 #제품별 생산시작시간
 st = {i: solver.IntVar(0, solver.infinity(), f'st_{i}') for i in products}
@@ -76,7 +76,7 @@ st = {i: solver.IntVar(0, solver.infinity(), f'st_{i}') for i in products}
 Tardiness = {i: solver.IntVar(0, solver.infinity(), f'Tardiness_{i}') for i in products}
 
 #배송후 제품생산가능
-Pro = {i:{j: solver.IntVar(0, 1, f'PrePro_{i}_{j}') for j in materials} for i in products}
+PrePro1 = {i:{j: solver.IntVar(0, 1, f'PrePro_{i}_{j}') for j in materials} for i in products}
 
 #납기지연시간 제약
 for i in products:
@@ -84,22 +84,22 @@ for i in products:
 
 #원자재 재고 제약
 for j in materials:
-    solver.Add(sum(PrePro[i][j]*requirements[i][j] for i in products) <= inventory[j])
+    solver.Add(sum(PrePro2[i][j]*requirements[i][j] for i in products) <= inventory[j])
 
 #배송시시 제약
 for j in materials:
-    solver.Add(sum(Pro[i][j]*requirements[i][j] for i in products) <= inventory[j] + transit[j]['qty'])
+    solver.Add(sum(PrePro1[i][j]*requirements[i][j] for i in products) <= inventory[j] + lt1[j]['qty'])
 
 #배송 후 생산가능 제약
 for i in products:
     for j in materials:
-        solver.Add(Pro[i][j]*M >= transit[j]['lt']-st[i])
+        solver.Add(PrePro1[i][j]*M >= lt1[j]['lt']-st[i])
 
 
 #원자재 조달기간 전 생산가능 제약
 for i in products:
     for j in materials:
-        solver.Add(PrePro[i][j]*M >= lt[j]-st[i])
+        solver.Add(PrePro2[i][j]*M >= lt2[j]-st[i])
 
 #납기지연시간 최소화
 solver.Minimize(sum(Tardiness[i] for i in products))
@@ -123,11 +123,6 @@ if status == pywraplp.Solver.OPTIMAL:
     for p in products:
         print(f"{p}: {Tardiness[p].solution_value()}")
     
-    # 각 원자재의 실제 사용량
-    print("\n각 원자재의 사용량:")
-    for m in materials:
-        used_amount = sum(PrePro[p][m].solution_value() * requirements[p].get(m, 0) for p in products)
-        print(f"{m}: {used_amount}")
         
     # 총 납기 지연 시간의 합 출력
     total_tardiness = sum(Tardiness[i].solution_value() for i in products)
@@ -175,17 +170,3 @@ fig2 = px.bar(
 fig2.write_html("납기_지연시간.html")
 
 
-# 원자재 사용량
-material_usage = []
-for m in materials:
-    used_amount = sum(PrePro[p][m].solution_value() * requirements[p].get(m, 0) for p in products)
-    material_usage.append(used_amount)
-
-fig3 = px.bar(
-    x=materials,
-    y=material_usage,
-    labels={'x': '원자재', 'y': '사용량'},
-    title="원자재별 사용량",
-    color_discrete_sequence=['mediumseagreen']
-)
-fig3.write_html("원자재_사용량.html")
