@@ -1,0 +1,46 @@
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>생산 일정 Gantt Chart</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+</head>
+<body>
+    <h2>제품별 생산 일정 (Gantt 차트)</h2>
+    <div id="gantt-chart"></div>
+    <script>
+const data = [
+    {task: 'P1', start: 0.0, duration: 4},
+    {task: 'P2', start: 0.0, duration: 2},
+    {task: 'P3', start: 0.0, duration: 3},
+    {task: 'P4', start: 0.0, duration: 5},
+    {task: 'P5', start: 0.0, duration: 1},
+];
+
+const traces = data.map((item, idx) => ({
+    x: [item.duration],
+    y: [item.task],
+    base: item.start,
+    type: 'bar',
+    orientation: 'h',
+    name: item.task,
+    text: `${item.task}: ${item.start} ~ ${item.start + item.duration}`,
+    hoverinfo: 'text',
+    marker: {
+        color: ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd'][idx % 5]
+    }
+}));
+
+const layout = {
+    barmode: 'stack',
+    title: '제품별 생산 일정',
+    xaxis: { title: '시간' },
+    yaxis: { title: '제품', autorange: 'reversed' },
+    height: 400
+};
+
+Plotly.newPlot('gantt-chart', traces, layout);
+</script>
+</body>
+</html>

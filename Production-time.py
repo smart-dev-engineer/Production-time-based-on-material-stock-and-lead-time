@@ -4,10 +4,17 @@ import matplotlib.pyplot as plt
 solver = pywraplp.Solver.CreateSolver('SCIP')
 
 #Big-M
-M = 100000
+M = 10000
+
+################입력변수#######################
+
+#라인수
+ln = 2
 
 # 제품
 products = ['P1', 'P2', 'P3', 'P4', 'P5']
+start_p = ['start']
+end_p = ['end']
 
 #납기일
 due = {
@@ -17,24 +24,35 @@ due = {
     'P4': 5,
     'P5': 0
 }
+# 제품별 생산시간 (단위: 시간)
+process_time = {
+    'P1': 4,
+    'P2': 2,
+    'P3': 3,
+    'P4': 5,
+    'P5': 1
+}
 
 
 # 원자재 수
 materials = ['R1', 'R2', 'R3']
 
-# 원자재 조달기간
+
+# 원자재 조달기간1
+lt1 = {
+    'R1': {'lt': 2, 'qty': 30},
+    'R2': {'lt': 3, 'qty': 30},
+    'R3': {'lt': 0, 'qty': 30},
+}
+
+# 원자재 조달기간2
 lt2= {
     'R1': 5,
     'R2': 10,
     'R3': 1
 }
 
-# 빠른 조달 리드타임 및 조달 가능량 정의
-lt1 = {
-    'R1': {'lt': 2, 'qty': 30},
-    'R2': {'lt': 3, 'qty': 30},
-    'R3': {'lt': 0, 'qty': 30},
-}
+
 
 # 각 제품별 원자재 리스트에 없는 원자재는 0으로 설정
 for material in materials:
@@ -46,9 +64,9 @@ for material in materials:
 
 # 원자재 재고
 inventory = {
-    'R1': 0,
-    'R2': 0,
-    'R3': 0,
+    'R1': 100,
+    'R2': 100,
+    'R3': 100,
 }
 
 # 제품별 원자재 소요량
@@ -61,46 +79,101 @@ requirements = {
 }
 
 # 각 제품별 원자재 리스트에 없는 원자재는 0으로 설정
-for product in requirements:
+for p in requirements:
     for material in materials:
-        if material not in requirements[product]:
-            requirements[product][material] = 0
+        if material not in requirements[p]:
+            requirements[p][material] = 0
 
-#각 제품별 원자재 조달 전 생산 가능여부
-PrePro2 = {i:{j: solver.IntVar(0, 1, f'PrePro_{i}_{j}') for j in materials} for i in products}
+
+
+# due, process_time, requirements에 더미 작업 추가
+due['start'] = 0
+due['end'] = 0
+
+process_time['start'] = 0
+process_time['end'] = 0
+
+requirements['start'] = {'R1': 0, 'R2': 0, 'R3': 0}
+requirements['end'] = {'R1': 0, 'R2': 0, 'R3': 0}
+
+#####################################종속변수#########################################################
+
+#제품별 작업순서
+x = {i:{j : solver.IntVar(0, 1, f'x_{i}_{j}') for j in products+start_p+end_p} for i in products+start_p+end_p}
 
 #제품별 생산시작시간
-st = {i: solver.IntVar(0, solver.infinity(), f'st_{i}') for i in products}
+st = {i: solver.IntVar(0, solver.infinity(), f'st_{i}') for i in products+start_p+end_p}
+
+#제품별 작업종료시간
+et = {i: solver.IntVar(0, solver.infinity(), f'st_{i}') for i in products+start_p+end_p}
+
+#배송후 제품생산가능
+PrePro1 = {i:{m: solver.IntVar(0, 1, f'PrePro_{i}_{m}') for m in materials} for i in products}
+
+#각 제품별 원자재 조달 전 생산 가능여부
+PrePro2 = {i:{m: solver.IntVar(0, 1, f'PrePro_{i}_{m}') for m in materials} for i in products}
 
 #제품별 납기지연시간
 Tardiness = {i: solver.IntVar(0, solver.infinity(), f'Tardiness_{i}') for i in products}
 
-#배송후 제품생산가능
-PrePro1 = {i:{j: solver.IntVar(0, 1, f'PrePro_{i}_{j}') for j in materials} for i in products}
+
+
+
+
+#####################################제약식##############################################################
+
+#시작작업수는 라인수보다 많을 수 없다.
+for i in start_p:
+    solver.Add(sum(x[i][j] for j in products+end_p) <= ln)
+
+#선행작업i의 후행작업은 1개만 올 수 있다.
+for i in products:
+    solver.Add(sum(x[i][j] for j in products+start_p+end_p) == 1)
+
+#후행작업j의 선행작업은 1개만 올 수 있다.
+for j in products:
+    solver.Add(sum(x[i][j] for i in products+start_p) == 1)
+
+#작업i다음에는 작업i가 올 수 없음
+for i in products+start_p+end_p:
+    solver.Add(x[i][i] == 0)
+
+#작업 j는 작업i가 끝난후에 시작할 수 있음
+for i in products+start_p:
+    for j in products+end_p:
+        solver.Add(st[j] >= st[i] + process_time[i]- M * (1 - x[i][j]))
+
+#각 작업의 종료시간은 작업시작시간+작업시간
+for i in products:
+    solver.Add(et[i] == st[i]+process_time[i])
 
 #납기지연시간 제약
 for i in products:
-    solver.Add(Tardiness[i] >= st[i] - due[i])
+    solver.Add(Tardiness[i] >= et[i] - due[i])
 
 #원자재 재고 제약
-for j in materials:
-    solver.Add(sum(PrePro2[i][j]*requirements[i][j] for i in products) <= inventory[j])
+for m in materials:
+    solver.Add(sum(PrePro2[i][m]*requirements[i][m] for i in products) <= inventory[m])
 
-#배송시시 제약
-for j in materials:
-    solver.Add(sum(PrePro1[i][j]*requirements[i][j] for i in products) <= inventory[j] + lt1[j]['qty'])
+#배송시 제약
+for m in materials:
+    solver.Add(sum(PrePro1[i][m]*requirements[i][m] for i in products) <= inventory[m] + lt1[m]['qty'])
 
 #배송 후 생산가능 제약
 for i in products:
-    for j in materials:
-        solver.Add(PrePro1[i][j]*M >= lt1[j]['lt']-st[i])
+    for m in materials:
+        solver.Add(PrePro1[i][m]*M >= lt1[m]['lt']-st[i])
 
 
 #원자재 조달기간 전 생산가능 제약
 for i in products:
-    for j in materials:
-        solver.Add(PrePro2[i][j]*M >= lt2[j]-st[i])
+    for m in materials:
+        solver.Add(PrePro2[i][m]*M >= lt2[m]-st[i])
 
+
+
+
+#######################최적화시작########################################
 #납기지연시간 최소화
 solver.Minimize(sum(Tardiness[i] for i in products))
 
@@ -131,42 +204,34 @@ if status == pywraplp.Solver.OPTIMAL:
 
     print(f"\n총 납기 지연 시간: {total_tardiness}")
     print(f"평균 납기 지연 시간: {average_tardiness}")
+
         
 else:
     print("최적해를 찾지 못했습니다.")
 
 
 
-import plotly.graph_objects as go
-import plotly.express as px
+import matplotlib.pyplot as plt
 
-# Gantt 스타일: 생산 시작 시간
-fig1 = go.Figure()
-fig1.add_trace(go.Bar(
-    y=products,
-    x=[st[p].solution_value() for p in products],
-    orientation='h',
-    marker=dict(color='skyblue'),
-    name="생산 시작 시간"
-))
+fig, ax = plt.subplots(figsize=(10, 5))
 
-fig1.update_layout(
-    title="제품별 생산 시작 시간",
-    xaxis_title="시간",
-    yaxis_title="제품",
-    template="plotly_white"
-)
-fig1.write_html("생산_시작시간.html")
+colors = ['skyblue', 'salmon', 'limegreen', 'gold', 'orchid']
+y_ticks = []
+y_labels = []
 
+for idx, p in enumerate(products):
+    start = st[p].solution_value()
+    duration = process_time[p]
+    ax.barh(y=idx, width=duration, left=start, height=0.4, color=colors[idx % len(colors)])
+    ax.text(start + duration / 2, idx, p, va='center', ha='center', color='black', fontsize=10)
+    y_ticks.append(idx)
+    y_labels.append(p)
 
-# 납기 지연 시간
-fig2 = px.bar(
-    x=products,
-    y=[Tardiness[p].solution_value() for p in products],
-    labels={'x': '제품', 'y': '납기 지연 시간'},
-    title="제품별 납기 지연 시간",
-    color_discrete_sequence=['salmon']
-)
-fig2.write_html("납기_지연시간.html")
+ax.set_yticks(y_ticks)
+ax.set_yticklabels(y_labels)
+ax.set_xlabel("시간")
+ax.set_title("제품별 생산 일정 (Gantt 차트)")
+ax.grid(True)
 
-
+plt.tight_layout()
+plt.show()
