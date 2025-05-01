@@ -64,9 +64,9 @@ for material in materials:
 
 # 원자재 재고
 inventory = {
-    'R1': 100,
-    'R2': 100,
-    'R3': 100,
+    'R1': 10,
+    'R2': 10,
+    'R3': 10,
 }
 
 # 제품별 원자재 소요량
