@@ -10,6 +10,7 @@ M = 10000
 
 #라인수
 ln = 2
+lines = ['line1', 'line2']
 
 # 제품
 products = ['P1', 'P2', 'P3', 'P4', 'P5']
@@ -18,11 +19,11 @@ end_p = ['end']
 
 #납기일
 due = {
-    'P1': 3,
-    'P2': 1,
-    'P3': 2,
+    'P1': 5,
+    'P2': 5,
+    'P3': 5,
     'P4': 5,
-    'P5': 0
+    'P5': 5
 }
 # 제품별 생산시간 (단위: 시간)
 process_time = {
@@ -30,7 +31,7 @@ process_time = {
     'P2': 2,
     'P3': 3,
     'P4': 5,
-    'P5': 1
+    'P5': 3
 }
 
 
@@ -101,6 +102,12 @@ requirements['end'] = {'R1': 0, 'R2': 0, 'R3': 0}
 #제품별 작업순서
 x = {i:{j : solver.IntVar(0, 1, f'x_{i}_{j}') for j in products+start_p+end_p} for i in products+start_p+end_p}
 
+#라인별 작업 할당
+y = {l:{i : solver.IntVar(0, 1, f'y_{l}_{i}') for i in products+end_p} for l in lines}
+
+#각 라인별 시작작업
+w = {l:{i : solver.IntVar(0, 1, f'w_{l}_{i}') for i in products+end_p} for l in lines}
+
 #제품별 생산시작시간
 st = {i: solver.IntVar(0, solver.infinity(), f'st_{i}') for i in products+start_p+end_p}
 
@@ -133,6 +140,33 @@ for i in products:
 #후행작업j의 선행작업은 1개만 올 수 있다.
 for j in products:
     solver.Add(sum(x[i][j] for i in products+start_p) == 1)
+
+#각 작업은 선행과 후행 존재
+for j in products:
+    solver.Add(sum(x[i][j] for i in products+start_p) - sum(x[j][k] for k in products+end_p) == 0)
+
+#시작작업 제약
+for l in lines:
+    for i in products+end_p:
+        solver.Add(w[l][i] <= x['start'][i])
+        solver.Add(w[l][i] <= y[l][i])
+        solver.Add(w[l][i] >= x['start'][i] + y[l][i] - 1)
+
+
+#각 라인에 시작작업은 1개만 할당가능
+for l in lines:
+    solver.Add(sum(w[l][i] for i in products+end_p) == 1)
+
+#작업은 라인에서 1개만 할당가능
+for i in products:
+    solver.Add(sum(y[l][i] for l in lines) == 1)
+
+for i in products:
+    for j in products:
+        for l in lines:
+            solver.Add(y[l][j] >= x[i][j]+y[l][i] -1)
+
+
 
 #작업i다음에는 작업i가 올 수 없음
 for i in products+start_p+end_p:
@@ -205,6 +239,24 @@ if status == pywraplp.Solver.OPTIMAL:
     print(f"\n총 납기 지연 시간: {total_tardiness}")
     print(f"평균 납기 지연 시간: {average_tardiness}")
 
+    print("\n작업 순서 (x[i][j] == 1 인 경우):")
+    for i in products + start_p + end_p:
+        for j in products + start_p + end_p:
+            if x[i][j].solution_value() == 1:
+                print(f"{i} → {j}")
+
+    print("\n라인 할당 (y[l][i] == 1 인 경우):")
+    for l in lines:
+        for i in products:
+            if y[l][i].solution_value() == 1:
+                print(f"{i} → {l}")
+    
+    print("\n라인별 시작 작업 (w[l][i] == 1 인 경우):")
+    for l in lines:
+        for i in products + end_p:
+            if w[l][i].solution_value() == 1:
+                print(f"{l}의 시작 작업: {i}")
+
         
 else:
     print("최적해를 찾지 못했습니다.")
@@ -229,8 +281,7 @@ for idx, p in enumerate(products):
 
 ax.set_yticks(y_ticks)
 ax.set_yticklabels(y_labels)
-ax.set_xlabel("시간")
-ax.set_title("제품별 생산 일정 (Gantt 차트)")
+ax.set_xlabel("time")
 ax.grid(True)
 
 plt.tight_layout()
