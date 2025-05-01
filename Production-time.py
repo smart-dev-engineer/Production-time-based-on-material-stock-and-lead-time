@@ -1,21 +1,23 @@
 from ortools.linear_solver import pywraplp
 import matplotlib.pyplot as plt
+import random
+
+
 # 1. OR-Tools solver 생성
 solver = pywraplp.Solver.CreateSolver('SCIP')
 
 #Big-M
-M = 10000
+M = 10000000
 
 ################입력변수#######################
 
-#라인수
-ln = 2
-lines = ['line1', 'line2']
+#라인
+lines = ['line1', 'line2', 'line3']
+ln = len(lines)
 
 # 제품
 products = ['P1', 'P2', 'P3', 'P4', 'P5']
-start_p = ['start']
-end_p = ['end']
+
 
 #납기일
 due = {
@@ -86,6 +88,42 @@ for p in requirements:
             requirements[p][material] = 0
 
 
+# 제품 20개
+products = [f'P{i}' for i in range(1, 20)]
+
+# 납기일 (1~10일 사이 랜덤)
+due = {p: random.randint(3, 10) for p in products}
+
+# 제품별 생산시간 (1~6시간 사이)
+process_time = {p: random.randint(1, 6) for p in products}
+
+# 원자재 5개
+materials = [f'R{i}' for i in range(1, 6)]
+
+# 원자재 조달기간1 및 수량
+lt1 = {
+    r: {'lt': random.randint(0, 5), 'qty': random.randint(20, 100)} for r in materials
+}
+
+# 원자재 조달기간2 (보통 긴 lead time)
+lt2 = {
+    r: random.randint(5, 15) for r in materials
+}
+
+# 원자재 재고 (초기 재고 50~150)
+inventory = {r: random.randint(50, 150) for r in materials}
+
+# 제품별 원자재 소요량 (0~20 사이, 일부 제품은 특정 원자재 사용 안 할 수 있음)
+requirements = {}
+for p in products:
+    requirements[p] = {}
+    for r in materials:
+        # 일부 원자재는 0으로 (30% 확률)
+        qty = random.randint(1, 20) if random.random() > 0.3 else 0
+        requirements[p][r] = qty
+
+start_p = ['start']
+end_p = ['end']
 
 # due, process_time, requirements에 더미 작업 추가
 due['start'] = 0
@@ -211,7 +249,7 @@ for i in products:
 #납기지연시간 최소화
 solver.Minimize(sum(Tardiness[i] for i in products))
 
-
+solver.SetTimeLimit(60000)
 
 # 5. 최적화 실행
 status = solver.Solve()
@@ -239,29 +277,31 @@ if status == pywraplp.Solver.OPTIMAL:
     print(f"\n총 납기 지연 시간: {total_tardiness}")
     print(f"평균 납기 지연 시간: {average_tardiness}")
 
-    print("\n작업 순서 (x[i][j] == 1 인 경우):")
-    for i in products + start_p + end_p:
-        for j in products + start_p + end_p:
-            if x[i][j].solution_value() == 1:
-                print(f"{i} → {j}")
 
-    print("\n라인 할당 (y[l][i] == 1 인 경우):")
-    for l in lines:
-        for i in products:
-            if y[l][i].solution_value() == 1:
-                print(f"{i} → {l}")
-    
-    print("\n라인별 시작 작업 (w[l][i] == 1 인 경우):")
-    for l in lines:
-        for i in products + end_p:
-            if w[l][i].solution_value() == 1:
-                print(f"{l}의 시작 작업: {i}")
 
         
 else:
     print("최적해를 찾지 못했습니다.")
 
 
+
+print("\n작업 순서 (x[i][j] == 1 인 경우):")
+for i in products + start_p + end_p:
+    for j in products + start_p + end_p:
+        if x[i][j].solution_value() == 1:
+            print(f"{i} → {j}")
+
+print("\n라인 할당 (y[l][i] == 1 인 경우):")
+for l in lines:
+    for i in products:
+        if y[l][i].solution_value() == 1:
+            print(f"{i} → {l}")
+
+print("\n라인별 시작 작업 (w[l][i] == 1 인 경우):")
+for l in lines:
+    for i in products + end_p:
+        if w[l][i].solution_value() == 1:
+            print(f"{l}의 시작 작업: {i}")
 
 import matplotlib.pyplot as plt
 
